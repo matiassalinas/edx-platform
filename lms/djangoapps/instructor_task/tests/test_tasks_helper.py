@@ -1048,29 +1048,42 @@ class TestExecutiveSummaryReport(TestReportMixin, InstructorTaskCourseTestCase):
         self.student1 = UserFactory()
         self.student2 = UserFactory()
 
-    def test_successfully_generate_executive_summary_report(self):
+    def students_purchases(self):
         """
-        Test that successfully generates the executive summary report.
+        Students purchases the courses using enrollment
+        and coupon codes.
         """
-        task_input = {'features': []}
-        with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
-            result = upload_exec_summary_report(
-                None, None, self.course.id,
-                task_input, 'generating executive summary report'
-            )
-        ReportStore.from_config(config_name='FINANCIAL_REPORTS')
-        self.assertDictContainsSubset({'attempted': 1, 'succeeded': 1, 'failed': 0}, result)
+        self.client.login(username=self.student1.username, password='test')
+        paid_course_reg_item = PaidCourseRegistration.add_to_order(self.student1_cart, self.course.id)
+        # update the quantity of the cart item paid_course_reg_item
+        resp = self.client.post(reverse('shoppingcart.views.update_user_cart'), {
+            'ItemId': paid_course_reg_item.id, 'qty': '4'
+        })
+        self.assertEqual(resp.status_code, 200)
+        # apply the coupon code to the item in the cart
+        resp = self.client.post(reverse('shoppingcart.views.use_code'), {'code': 'coupon1'})
+        self.assertEqual(resp.status_code, 200)
 
-    def _verify_html_file_report(self, report_store, expected_data):
-        """
-        Verify grade report data.
-        """
-        report_html_filename = report_store.links_for(self.course.id)[0][0]
-        report_path = report_store.path_to(self.course.id, report_html_filename)
-        with report_store.storage.open(report_path) as html_file:
-            html_file_data = html_file.read().decode('utf-8')
-            for data in expected_data:
-                self.assertIn(data, html_file_data)
+        self.student1_cart.purchase()
+
+        course_reg_codes = CourseRegistrationCode.objects.filter(order=self.student1_cart)
+        redeem_url = reverse('register_code_redemption', args=[course_reg_codes[0].code])
+        response = self.client.get(redeem_url)
+        self.assertEqual(response.status_code, 200)
+        # check button text
+        self.assertContains(response, 'Activate Course Enrollment')
+
+        response = self.client.post(redeem_url)
+        self.assertEqual(response.status_code, 200)
+
+        self.client.login(username=self.student2.username, password='test')
+        PaidCourseRegistration.add_to_order(self.student2_cart, self.course.id)
+
+        # apply the coupon code to the item in the cart
+        resp = self.client.post(reverse('shoppingcart.views.use_code'), {'code': 'coupon1'})
+        self.assertEqual(resp.status_code, 200)
+
+        self.student2_cart.purchase()
 
 
 @ddt.ddt
