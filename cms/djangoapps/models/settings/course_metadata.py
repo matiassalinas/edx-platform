@@ -6,6 +6,7 @@ Django module for Course Metadata class -- manages advanced settings and related
 from datetime import datetime
 import six
 from crum import get_current_user
+from django.core.exceptions import ValidationError
 from django.conf import settings
 from django.utils.translation import ugettext as _
 import pytz
@@ -143,6 +144,11 @@ class CourseMetadata(object):
         if not GlobalStaff().has_user(get_current_user()):
             exclude_list.append('create_zendesk_tickets')
 
+        # Do not show "Proctortrack Exam Escalation Contact" if Proctortrack is not
+        # an available proctoring backend.
+        if not settings.PROCTORING_BACKENDS or settings.PROCTORING_BACKENDS.get('proctortrack') is None:
+            exclude_list.append('proctoring_escalation_email')
+
         return exclude_list
 
     @classmethod
@@ -244,7 +250,7 @@ class CourseMetadata(object):
                 val = model['value']
                 if hasattr(descriptor, key) and getattr(descriptor, key) != val:
                     key_values[key] = descriptor.fields[key].from_json(val)
-            except (TypeError, ValueError) as err:
+            except (TypeError, ValueError, ValidationError) as err:
                 did_validate = False
                 errors.append({'message': text_type(err), 'model': model})
 
@@ -267,6 +273,27 @@ class CourseMetadata(object):
                 ' Contact {support_email} for assistance'
             ).format(support_email=settings.PARTNER_SUPPORT_EMAIL or 'support')
             errors.append({'message': message, 'model': proctoring_provider_model})
+
+        # Require a valid escalation email if Proctortrack is chosen as the proctoring provider
+        escalation_email_model = filtered_dict.get('proctoring_escalation_email')
+        if escalation_email_model:
+            escalation_email = escalation_email_model.get('value')
+        else:
+            escalation_email = descriptor.proctoring_escalation_email
+
+        missing_escalation_email_msg = 'Provider \'{provider}\' requires an exam escalation contact.'
+        if proctoring_provider_model and proctoring_provider_model.get('value') == 'proctortrack':
+            if not escalation_email:
+                did_validate = False
+                message = missing_escalation_email_msg.format(provider=proctoring_provider_model.get('value'))
+                errors.append({'message': message, 'model': proctoring_provider_model})
+
+        if escalation_email_model and not proctoring_provider_model and descriptor.proctoring_provider == 'proctortrack':
+            if not escalation_email:
+                did_validate = False
+                message = missing_escalation_email_msg.format(provider=descriptor.proctoring_provider)
+                errors.append({'message': message, 'model': escalation_email_model})
+
 
         # If did validate, go ahead and update the metadata
         if did_validate:
