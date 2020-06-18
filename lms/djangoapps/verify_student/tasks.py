@@ -10,9 +10,16 @@ import simplejson
 from celery import Task, task
 from celery.states import FAILURE
 from django.conf import settings
+from django.contrib.auth.models import User
+from django.contrib.sites.models import Site
 from django.core.mail import EmailMessage
+from edx_ace import ace
+from edx_ace.recipient import Recipient
 
+from openedx.core.djangoapps.ace_common.template_context import get_base_template_context
 from edxmako.shortcuts import render_to_string
+from lms.djangoapps.verify_student.message_types import VerificationApproved
+from openedx.core.djangoapps.lang_pref import LANGUAGE_KEY
 from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
 
 ACE_ROUTING_KEY = getattr(settings, 'ACE_ROUTING_KEY', None)
