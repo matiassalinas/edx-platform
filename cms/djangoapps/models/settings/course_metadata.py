@@ -288,12 +288,14 @@ class CourseMetadata(object):
                 message = missing_escalation_email_msg.format(provider=proctoring_provider_model.get('value'))
                 errors.append({'message': message, 'model': proctoring_provider_model})
 
-        if escalation_email_model and not proctoring_provider_model and descriptor.proctoring_provider == 'proctortrack':
+        if (
+            escalation_email_model and not proctoring_provider_model and
+            descriptor.proctoring_provider == 'proctortrack'
+        ):
             if not escalation_email:
                 did_validate = False
                 message = missing_escalation_email_msg.format(provider=descriptor.proctoring_provider)
                 errors.append({'message': message, 'model': escalation_email_model})
-
 
         # If did validate, go ahead and update the metadata
         if did_validate:

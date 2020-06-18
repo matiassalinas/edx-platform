@@ -85,6 +85,9 @@ class StringOrDate(Date):
 
 
 class EmailString(String):
+    """
+    Parse String with email validation
+    """
     def from_json(self, value):
         if value:
             validate_email(value)
