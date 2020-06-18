@@ -894,7 +894,7 @@ class CourseFields(object):
         help=_(
             "Required if 'proctortrack' is selected as your proctoring provider. "
             "Enter an email address to be contacted by the support team whenever there are escalations "
-            "(ex. appeals, delayed reviews, etc)"
+            "(e.g. appeals, delayed reviews, etc.)."
         ),
         default=None,
         scope=Scope.settings
