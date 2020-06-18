@@ -281,7 +281,7 @@ class CourseMetadata(object):
     @staticmethod
     def _validate_proctoring_settings(descriptor, settings_dict, user):
         """
-        Verify proctoring settings 
+        Verify proctoring settings
 
         Returns a list of error objects
         """
@@ -324,4 +324,4 @@ class CourseMetadata(object):
                 message = missing_escalation_email_msg.format(provider=descriptor.proctoring_provider)
                 errors.append({'message': message, 'model': escalation_email_model})
 
-        return errors 
+        return errors
