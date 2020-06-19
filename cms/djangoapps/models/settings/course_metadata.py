@@ -320,7 +320,6 @@ class CourseMetadata(object):
             descriptor.proctoring_provider == 'proctortrack'
         ):
             if not escalation_email:
-                did_validate = False
                 message = missing_escalation_email_msg.format(provider=descriptor.proctoring_provider)
                 errors.append({'message': message, 'model': escalation_email_model})
 
