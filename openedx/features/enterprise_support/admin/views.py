@@ -11,6 +11,8 @@ from student.models import CourseEnrollment, CourseEnrollmentAttribute
 from enterprise.admin.utils import parse_csv
 from enterprise.models import EnterpriseCourseEnrollment
 
+from django.core.exceptions import ValidationError
+
 
 class EnrollmentAttributeOverrideView(View):
     """
@@ -27,6 +29,7 @@ class EnrollmentAttributeOverrideView(View):
 
     def get(self, request):
         """
+        Render Enrollment Attribute Override View.
         """
         context = {'csv_form': CSVImportForm()}
         context.update(self._get_admin_context(request))
@@ -35,6 +38,7 @@ class EnrollmentAttributeOverrideView(View):
 
     def post(self, request):
         """
+        HTTP POST handler for Enrollment Attribute Override View
         """
         redirect_url = reverse('admin:enterprise_enterprisecourseenrollment_changelist')
         csv_file = request.FILES.get('csv_file')
@@ -46,30 +50,37 @@ class EnrollmentAttributeOverrideView(View):
         parsed_csv = parse_csv(csv_file, expected_columns=['user_id', 'course_id', 'opportunity_id'])
 
         error_line_numbers = []
-        for index, record in enumerate(parsed_csv):
-            try:
-                course_enrollment = CourseEnrollment.objects.get(
-                    user_id=record['user_id'],
-                    course_id=record['course_id'],
-                )
-                CourseEnrollmentAttribute.objects.update_or_create(
-                    enrollment=course_enrollment,
-                    namespace='salesforce',
-                    name='opportunity_id',
-                    defaults={
-                        'value': record['opportunity_id'],
-                    }
-                )
-            except CourseEnrollment.DoesNotExist:
-                error_line_numbers.append(str(index + 1))
+        try:
+            for index, record in enumerate(parsed_csv):
+                try:
+                    course_enrollment = CourseEnrollment.objects.get(
+                        user_id=record['user_id'],
+                        course_id=record['course_id'],
+                    )
+                    CourseEnrollmentAttribute.objects.update_or_create(
+                        enrollment=course_enrollment,
+                        namespace='salesforce',
+                        name='opportunity_id',
+                        defaults={
+                            'value': record['opportunity_id'],
+                        }
+                    )
+                except CourseEnrollment.DoesNotExist:
+                    error_line_numbers.append(str(index + 1))
+        except ValidationError as ex:
+            messages.error(
+                request,
+                ex.message
+            )
 
-        messages.error(
-            request,
-            _(
-                'Enrollment attributes were not updated for some users '
-                'because no enrollment found for records at line numbers: {error_line_numbers}'
-            ).format(error_line_numbers=', '.join(error_line_numbers))
-        )
+        if error_line_numbers:
+            messages.error(
+                request,
+                _(
+                    'Enrollment attributes were not updated for some users '
+                    'because no enrollment found for records at line numbers: {error_line_numbers}'
+                ).format(error_line_numbers=', '.join(error_line_numbers))
+            )
 
         context = {'csv_form': CSVImportForm()}
         context.update(self._get_admin_context(request))
