@@ -2,32 +2,19 @@
 Course Duration Limit Configuration Models
 """
 
-# -*- coding: utf-8 -*-
-
-
-from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
 
-from course_modes.models import CourseMode
-from lms.djangoapps.courseware.masquerade import (
-    get_course_masquerade,
-    get_masquerade_role,
-    is_masquerading_as_specific_student
-)
+from lms.djangoapps.courseware.masquerade import get_course_masquerade, is_masquerading_as_specific_student
 from openedx.core.djangoapps.config_model_utils.models import StackedConfigurationModel
 from openedx.core.djangoapps.config_model_utils.utils import is_in_holdback
-from openedx.features.content_type_gating.helpers import (
-    CONTENT_GATING_PARTITION_ID,
-    CONTENT_TYPE_GATE_GROUP_IDS,
-    correct_modes_for_fbe
-)
+from openedx.features.content_type_gating.helpers import correct_modes_for_fbe
+from openedx.features.content_type_gating.models import ContentTypeGatingConfig
 from student.models import CourseEnrollment
 from student.role_helpers import has_staff_roles
-from xmodule.partitions.partitions import ENROLLMENT_TRACK_PARTITION_ID
 
 
 @python_2_unicode_compatible
@@ -50,34 +37,6 @@ class CourseDurationLimitConfig(StackedConfigurationModel):
             'created after this date and time (user local time) will be affected.'
         )
     )
-
-    @classmethod
-    def has_full_access_role_in_masquerade(cls, user, course_key, course_masquerade):
-        """
-        When masquerading, the course duration limits will never trigger the course to expire, redirecting the user.
-        The roles of the masquerade user are still used to determine whether the course duration limit banner displays.
-        Another banner also displays if the course is expired for the masquerade user.
-        Both banners will appear if the masquerade user does not have any of the following roles:
-        Staff, Instructor, Beta Tester, Forum Community TA, Forum Group Moderator, Forum Moderator, Forum Administrator
-        """
-        masquerade_role = get_masquerade_role(user, course_key)
-        verified_mode_id = settings.COURSE_ENROLLMENT_MODES.get(CourseMode.VERIFIED, {}).get('id')
-        # Masquerading users can select the the role of a verified users without selecting a specific user
-        is_verified = (course_masquerade.user_partition_id == ENROLLMENT_TRACK_PARTITION_ID
-                       and course_masquerade.group_id == verified_mode_id)
-        # Masquerading users can select the role of staff without selecting a specific user
-        is_staff = masquerade_role == 'staff'
-        # Masquerading users can select other full access roles for which content type gating is disabled
-        is_full_access = (course_masquerade.user_partition_id == CONTENT_GATING_PARTITION_ID
-                          and course_masquerade.group_id == CONTENT_TYPE_GATE_GROUP_IDS['full_access'])
-        # When masquerading as a specific user, we can check that user's staff roles as we would with a normal user
-        is_staff_role = False
-        if course_masquerade.user_name:
-            is_staff_role = has_staff_roles(user, course_key)
-
-        if is_verified or is_full_access or is_staff or is_staff_role:
-            return True
-        return False
 
     @classmethod
     def enabled_for_enrollment(cls, user=None, course_key=None):
@@ -108,7 +67,7 @@ class CourseDurationLimitConfig(StackedConfigurationModel):
         if user and user.id:
             course_masquerade = get_course_masquerade(user, course_key)
             if course_masquerade:
-                if cls.has_full_access_role_in_masquerade(user, course_key, course_masquerade):
+                if ContentTypeGatingConfig.has_full_access_role_in_masquerade(user, course_key, course_masquerade):
                     return False
             elif has_staff_roles(user, course_key):
                 return False

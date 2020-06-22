@@ -2,8 +2,6 @@
 Contains tests to verify correctness of course expiration functionality
 """
 
-
-import json
 from datetime import timedelta
 
 import ddt
@@ -14,7 +12,6 @@ from django.urls import reverse
 from django.utils.timezone import now
 
 from course_modes.models import CourseMode
-from experiments.models import ExperimentData
 from lms.djangoapps.courseware.tests.factories import (
     BetaTesterFactory,
     GlobalStaffFactory,
@@ -23,6 +20,7 @@ from lms.djangoapps.courseware.tests.factories import (
     OrgStaffFactory,
     StaffFactory
 )
+from lms.djangoapps.courseware.tests.helpers import MasqueradeMixin
 from lms.djangoapps.discussion.django_comment_client.tests.factories import RoleFactory
 from openedx.core.djangoapps.content.course_overviews.models import CourseOverview
 from openedx.core.djangoapps.course_date_signals.utils import MAX_DURATION, MIN_DURATION
@@ -46,7 +44,7 @@ from xmodule.partitions.partitions import ENROLLMENT_TRACK_PARTITION_ID
 
 
 @ddt.ddt
-class CourseExpirationTestCase(ModuleStoreTestCase):
+class CourseExpirationTestCase(ModuleStoreTestCase, MasqueradeMixin):
     """Tests to verify the get_user_course_expiration_date function is working correctly"""
     def setUp(self):
         super(CourseExpirationTestCase, self).setUp()
@@ -222,29 +220,6 @@ class CourseExpirationTestCase(ModuleStoreTestCase):
             self.assertContains(response, banner_text)
         else:
             self.assertNotContains(response, banner_text)
-
-    def update_masquerade(self, role='student', group_id=None, username=None, user_partition_id=None):
-        """
-        Toggle masquerade state.
-        """
-        masquerade_url = reverse(
-            'masquerade_update',
-            kwargs={
-                'course_key_string': six.text_type(self.course.id),
-            }
-        )
-        response = self.client.post(
-            masquerade_url,
-            json.dumps({
-                'role': role,
-                'group_id': group_id,
-                'user_name': username,
-                'user_partition_id': user_partition_id,
-            }),
-            'application/json'
-        )
-        self.assertEqual(response.status_code, 200)
-        return response
 
     @mock.patch("openedx.core.djangoapps.course_date_signals.utils.get_course_run_details")
     def test_masquerade_in_holdback(self, mock_get_course_run_details):
