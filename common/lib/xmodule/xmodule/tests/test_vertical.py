@@ -67,6 +67,9 @@ class StubCompletionService(object):
     def blocks_to_mark_complete_on_view(self, blocks):
         return {} if self._completion_value == 1.0 else blocks
 
+    def vertical_is_complete(self, item):
+        return False
+
 
 class BaseVerticalBlockTest(XModuleXmlImportTest):
     """
