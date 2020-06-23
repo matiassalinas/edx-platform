@@ -278,8 +278,8 @@ class CourseMetadata(object):
 
         return cls.fetch(descriptor)
 
-    @staticmethod
-    def _validate_proctoring_settings(descriptor, settings_dict, user):
+    @classmethod
+    def _validate_proctoring_settings(cls, descriptor, settings_dict, user):
         """
         Verify proctoring settings
 
@@ -287,7 +287,9 @@ class CourseMetadata(object):
         """
         errors = []
 
-        # Disallow updates to the proctoring provider after course start
+        # If the user is not edX staff, the user has requested a change to the proctoring_provider
+        # Advanced Setting, and it is after course start, prevent the user from changing the
+        # proctoring provider.
         proctoring_provider_model = settings_dict.get('proctoring_provider')
         if (
             not user.is_staff and
@@ -324,3 +326,17 @@ class CourseMetadata(object):
                 errors.append({'message': message, 'model': escalation_email_model})
 
         return errors
+
+    @staticmethod
+    def _has_requested_proctoring_provider_changed(current_provider, requested_provider):
+        """
+        Return whether the requested proctoring provider is different than the current proctoring provider, indicating
+        that the user has requested a change to the proctoring_provider Advanced Setting.
+        The requested_provider will be None if the proctoring_provider setting is not available (e.g. if the
+        ENABLE_PROCTORING_PROVIDER_OVERRIDES waffle flag is not enabled for the course). In this case, we consider
+        that there is no change in the requested proctoring provider.
+        """
+        if requested_provider is None:
+            return False
+        else:
+            return current_provider != requested_provider
