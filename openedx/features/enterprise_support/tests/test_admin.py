@@ -17,6 +17,8 @@ from student.tests.factories import CourseEnrollmentFactory
 from openedx.core.djangoapps.catalog.tests.factories import CourseRunFactory
 from student.models import CourseEnrollment, CourseEnrollmentAttribute
 
+from django.contrib.messages import get_messages
+
 
 class EnrollmentAttributeOverrideViewTest(ModuleStoreTestCase):
     """
@@ -57,7 +59,7 @@ class EnrollmentAttributeOverrideViewTest(ModuleStoreTestCase):
 
     def create_csv(self, header=None, data=None):
         """Create csv"""
-        header = header or ['user_id', 'course_id', 'opportunity_id']
+        header = header or ['lms_user_id', 'course_id', 'opportunity_id']
         data = data or self.csv_data
         tmp_csv_path = os.path.join(tempfile.gettempdir(), 'data.csv')
         with open(tmp_csv_path, 'w') as csv_file:
@@ -87,7 +89,7 @@ class EnrollmentAttributeOverrideViewTest(ModuleStoreTestCase):
         """
         response = self.client.get(self.view_url)
         assert response.status_code == 200
-        assert isinstance(response.context['csv_form'], CSVImportForm)
+        assert isinstance(response.context['form'], CSVImportForm)
 
     def test_post(self):
         """
@@ -96,25 +98,22 @@ class EnrollmentAttributeOverrideViewTest(ModuleStoreTestCase):
         csv_path = self.create_csv()
         post_data = {'csv_file': open(csv_path)}
         response = self.client.post(self.view_url, data=post_data)
-        assert response.status_code == 200
+        assert response.status_code == 302
         self.verify_enrollment_attributes()
-        assert isinstance(response.context['csv_form'], CSVImportForm)
 
         # override existing
         csv_path = self.create_csv(data=self.csv_data_for_existing_attributes)
         post_data = {'csv_file': open(csv_path)}
         response = self.client.post(self.view_url, data=post_data)
-        assert response.status_code == 200
+        assert response.status_code == 302
         self.verify_enrollment_attributes(data=self.csv_data_for_existing_attributes)
-        assert isinstance(response.context['csv_form'], CSVImportForm)
 
     def test_post_with_no_csv(self):
         """
         Tests that HTTP POST without out csv file is working as expected.
         """
         response = self.client.post(self.view_url)
-        assert response.status_code == 302
-        assert response.url == '/admin/enterprise/enterprisecourseenrollment/'
+        assert response.context['form'].errors == {'csv_file': ['This field is required.']}
 
     def test_post_with_incorrect_csv_header(self):
         """
@@ -123,29 +122,27 @@ class EnrollmentAttributeOverrideViewTest(ModuleStoreTestCase):
         csv_path = self.create_csv(header=['a', 'b'])
         post_data = {'csv_file': open(csv_path)}
         response = self.client.post(self.view_url, data=post_data)
-        assert response.status_code == 200
-        messages = []
-        for msg in response.context['messages']:
-            messages.append(str(msg))
-        assert messages == [
-            'Expected a CSV file with [user_id, course_id, opportunity_id] columns, but found [a, b] columns instead.'
-        ]
-        assert isinstance(response.context['csv_form'], CSVImportForm)
+        assert response.context['form'].errors == {
+            'csv_file': [
+                'Expected a CSV file with [lms_user_id, course_id, opportunity_id] '
+                'columns, but found [a, b] columns instead.'
+            ]
+        }
 
     def test_post_with_no_enrollment_error(self):
         """
         Tests that HTTP POST is working as expected when for some records there is no enrollment.
         """
-        csv_data = self.csv_data + [[999, self.course_id, 'NOPE']]
+        csv_data = self.csv_data + [[999, self.course_id, 'NOPE'], [1000, self.course_id, 'NONE']]
         csv_path = self.create_csv(data=csv_data)
         post_data = {'csv_file': open(csv_path)}
         response = self.client.post(self.view_url, data=post_data)
-        assert response.status_code == 200
+        assert response.status_code == 302
         messages = []
-        for msg in response.context['messages']:
+        for msg in get_messages(response.wsgi_request):
             messages.append(str(msg))
         assert messages == [
-            'Enrollment attributes were not updated for some users because no ' +
-            'enrollment found for records at line numbers: 4'
+            'Successfully updated learner enrollment opportunity ids.',
+            'Enrollment attributes were not updated for records at following line numbers '
+            'in csv because no enrollment found for these records: 4, 5'
         ]
-        assert isinstance(response.context['csv_form'], CSVImportForm)

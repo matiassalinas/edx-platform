@@ -7,81 +7,68 @@ from django.utils.translation import ugettext as _
 
 from openedx.features.enterprise_support.admin.forms import CSVImportForm
 from student.models import CourseEnrollment, CourseEnrollmentAttribute
+from django.views.generic.edit import FormView
 
-from enterprise.admin.utils import parse_csv
+from enterprise.admin.utils import validate_csv
 from enterprise.models import EnterpriseCourseEnrollment
 
 from django.core.exceptions import ValidationError
 
 
-class EnrollmentAttributeOverrideView(View):
+class EnrollmentAttributeOverrideView(FormView):
     """
     Learner Enrollment Attribute Override View.
     """
-    template = 'enterprise_support/admin/enrollment_attributes_override.html'
+    template_name = 'enterprise_support/admin/enrollment_attributes_override.html'
+    form_class = CSVImportForm
 
     @staticmethod
     def _get_admin_context(request):
         admin_context = {'opts': EnterpriseCourseEnrollment._meta}
-        admin_context.update(admin.site.each_context(request))
-
         return admin_context
 
-    def get(self, request):
-        """
-        Render Enrollment Attribute Override View.
-        """
-        context = {'csv_form': CSVImportForm()}
-        context.update(self._get_admin_context(request))
+    def get_success_url(self):
+        return reverse('admin:enterprise_override_attributes')
 
-        return render(request, self.template, context)
+    def get_context_data(self, **kwargs):
+        context = super(EnrollmentAttributeOverrideView, self).get_context_data(**kwargs)
+        context.update(self._get_admin_context(self.request))
+        return context
 
-    def post(self, request):
-        """
-        HTTP POST handler for Enrollment Attribute Override View
-        """
-        redirect_url = reverse('admin:enterprise_enterprisecourseenrollment_changelist')
-        csv_file = request.FILES.get('csv_file')
-
-        if not csv_file:
-            messages.error(request, 'CSV file is required.')
-            return HttpResponseRedirect(redirect_url)
-
-        parsed_csv = parse_csv(csv_file, expected_columns=['user_id', 'course_id', 'opportunity_id'])
-
+    def form_valid(self, form):
+        total_records = 0
         error_line_numbers = []
-        try:
-            for index, record in enumerate(parsed_csv):
-                try:
-                    course_enrollment = CourseEnrollment.objects.get(
-                        user_id=record['user_id'],
-                        course_id=record['course_id'],
-                    )
-                    CourseEnrollmentAttribute.objects.update_or_create(
-                        enrollment=course_enrollment,
-                        namespace='salesforce',
-                        name='opportunity_id',
-                        defaults={
-                            'value': record['opportunity_id'],
-                        }
-                    )
-                except CourseEnrollment.DoesNotExist:
-                    error_line_numbers.append(str(index + 1))
-        except ValidationError as ex:
-            messages.error(
-                request,
-                ex.message
-            )
+        csv_reader = form.cleaned_data['csv_file']
+        for index, record in enumerate(csv_reader):
+            total_records += 1
+            try:
+                course_enrollment = CourseEnrollment.objects.get(
+                    user_id=record['lms_user_id'],
+                    course_id=record['course_id'],
+                )
+            except CourseEnrollment.DoesNotExist:
+                error_line_numbers.append(str(index + 1))
+            else:
+                CourseEnrollmentAttribute.objects.update_or_create(
+                    enrollment=course_enrollment,
+                    namespace='salesforce',
+                    name='opportunity_id',
+                    defaults={
+                        'value': record['opportunity_id'],
+                    }
+                )
+
+        # if for some reason not a single enrollment updated than do not show success message.
+        if len(error_line_numbers) != total_records:
+            messages.success(self.request, 'Successfully updated learner enrollment opportunity ids.')
 
         if error_line_numbers:
             messages.error(
-                request,
+                self.request,
                 _(
-                    'Enrollment attributes were not updated for some users '
-                    'because no enrollment found for records at line numbers: {error_line_numbers}'
+                    'Enrollment attributes were not updated for records at following line numbers '
+                    'in csv because no enrollment found for these records: {error_line_numbers}'
                 ).format(error_line_numbers=', '.join(error_line_numbers))
             )
 
-        context = {'csv_form': CSVImportForm()}
-        context.update(self._get_admin_context(request))
-        return render(request, self.template, context)
+        return super(EnrollmentAttributeOverrideView, self).form_valid(form)
