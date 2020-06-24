@@ -157,7 +157,7 @@ def create_account_with_params(request, params):
         'REGISTRATION_EXTRA_FIELDS',
         getattr(settings, 'REGISTRATION_EXTRA_FIELDS', {})
     )
-    if is_registration_api_v1(request):
+    if is_registration_api_v1(request) or pipeline.running(request):
         if 'confirm_email' in extra_fields:
             del extra_fields['confirm_email']
 
